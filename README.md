@@ -30,4 +30,4 @@ sigra-service (Axum)
 
 ## License
 
-Proprietary — Antarez Tech Solutions.
+This repository and all contributions are licensed under the [LGPL 3.0](https://www.gnu.org/licenses/lgpl-3.0.html), unless otherwise specified in subdirectory LICENSE files.
