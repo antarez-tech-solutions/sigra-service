@@ -1,0 +1,37 @@
+[package]
+name = "sigra-service"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Core backend for the Sigra e-signature platform"
+license = "LGPL-3.0"
+
+[dependencies]
+# Web framework
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Database
+mongodb = "3"
+bson = { version = "2", features = ["chrono-0_4"] }
+
+# Foundation libraries (path deps for local dev — switch to git for CI)
+sigrachain-crypto = { path = "../sigrachain-crypto-engine" }
+antarez-eas-client = { path = "../antarez-eas-client" }
+antarez-s3-storage = { path = "../antarez-s3-storage" }
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+reqwest = { version = "0.12", features = ["json"] }
