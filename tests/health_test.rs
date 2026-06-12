@@ -1,12 +1,15 @@
 //! Integration tests — requires MongoDB on localhost:27017 and MinIO on localhost:9000.
+//! Override the MongoDB endpoint with SIGRA_TEST_MONGODB_URI when 27017 is taken.
 
 use reqwest::StatusCode;
 use tokio::net::TcpListener;
 
 async fn start_server() -> std::net::SocketAddr {
+    let mongo_uri = std::env::var("SIGRA_TEST_MONGODB_URI")
+        .unwrap_or_else(|_| "mongodb://localhost:27017".into());
     // SAFETY: single-threaded test setup before server starts; no concurrent env reads.
     unsafe {
-        std::env::set_var("MONGODB_URI", "mongodb://localhost:27017");
+        std::env::set_var("MONGODB_URI", mongo_uri);
         std::env::set_var("MONGODB_DATABASE", "sigra_test");
         std::env::set_var("S3_BUCKET", "sigra-test");
         std::env::set_var("S3_ENDPOINT", "http://localhost:9000");

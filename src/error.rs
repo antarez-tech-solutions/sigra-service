@@ -19,6 +19,9 @@ pub enum ServiceError {
     #[error("forbidden: {0}")]
     Forbidden(String),
 
+    #[error("unauthorized: {0}")]
+    Unauthorized(String),
+
     #[error("database error: {0}")]
     Database(String),
 
@@ -49,6 +52,7 @@ impl IntoResponse for ServiceError {
             ServiceError::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
             ServiceError::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
             ServiceError::Forbidden(_) => (StatusCode::FORBIDDEN, "forbidden"),
+            ServiceError::Unauthorized(_) => (StatusCode::UNAUTHORIZED, "unauthorized"),
             ServiceError::Database(_) => (StatusCode::INTERNAL_SERVER_ERROR, "database_error"),
             ServiceError::Storage(_) => (StatusCode::INTERNAL_SERVER_ERROR, "storage_error"),
             ServiceError::Crypto(_) => (StatusCode::INTERNAL_SERVER_ERROR, "crypto_error"),
