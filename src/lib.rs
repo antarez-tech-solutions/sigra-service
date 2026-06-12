@@ -9,6 +9,7 @@ pub mod repo;
 pub mod routes;
 pub mod services;
 pub mod state;
+pub mod tokens;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

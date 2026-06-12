@@ -33,6 +33,10 @@ pub struct AppConfig {
     pub gateway_shared_secret: String,
     /// Bearer token for operator-only /admin routes.
     pub admin_token: String,
+    /// HMAC key for signer capability tokens.
+    pub signer_token_secret: String,
+    /// Signer token lifetime in seconds (default: 7 days).
+    pub signer_token_ttl_secs: u64,
 }
 
 impl AppConfig {
@@ -60,6 +64,10 @@ impl AppConfig {
                 .expect("invalid PRESIGNED_URL_EXPIRY_SECS"),
             gateway_shared_secret: env_required("GATEWAY_SHARED_SECRET"),
             admin_token: env_required("ADMIN_TOKEN"),
+            signer_token_secret: env_required("SIGNER_TOKEN_SECRET"),
+            signer_token_ttl_secs: env_or("SIGNER_TOKEN_TTL_SECS", "604800")
+                .parse()
+                .expect("invalid SIGNER_TOKEN_TTL_SECS"),
         }
     }
 }

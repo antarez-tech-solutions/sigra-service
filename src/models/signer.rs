@@ -24,4 +24,9 @@ pub struct Signer {
     pub status: SignerStatus,
     pub signed_at: Option<DateTime<Utc>>,
     pub signature_data: Option<String>,
+    /// SHA-256 hex of the signer's active capability token; cleared on use.
+    /// `#[serde(default)]` keeps documents written before this field
+    /// deserializable.
+    #[serde(default)]
+    pub token_hash: Option<String>,
 }
