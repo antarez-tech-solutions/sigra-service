@@ -27,6 +27,7 @@ async fn start_server() -> std::net::SocketAddr {
         std::env::set_var("ANCHOR_INTERVAL_SECS", "99999");
         std::env::set_var("GATEWAY_SHARED_SECRET", "test-gateway-secret");
         std::env::set_var("ADMIN_TOKEN", "test-admin-token");
+        std::env::set_var("SIGNER_TOKEN_SECRET", "test-signer-token-secret");
     }
 
     let app = sigra_service::app().await.expect("build app");
