@@ -33,7 +33,10 @@ impl EnvelopeRepo {
                 doc! { "_id": id },
                 doc! { "$set": {
                     "status": s.as_str().unwrap_or("draft"),
-                    "updated_at": bson::DateTime::from_chrono(Utc::now()),
+                    // RFC3339 string to match how inserts store dates (the
+                    // structs serialize chrono via serde -> string). A BSON
+                    // date here would make the row unreadable by the model.
+                    "updated_at": Utc::now().to_rfc3339(),
                 }},
             )
             .await?;
@@ -55,7 +58,7 @@ impl EnvelopeRepo {
                     "attestation_uid": uid,
                     "merkle_root": root,
                     "merkle_proof": proof,
-                    "updated_at": bson::DateTime::from_chrono(Utc::now()),
+                    "updated_at": Utc::now().to_rfc3339(),
                 }},
             )
             .await?;
@@ -107,7 +110,7 @@ impl SignerRepo {
                 doc! { "_id": id },
                 doc! { "$set": {
                     "status": "signed",
-                    "signed_at": bson::DateTime::from_chrono(Utc::now()),
+                    "signed_at": Utc::now().to_rfc3339(),
                     "signature_data": sig,
                 }},
             )
