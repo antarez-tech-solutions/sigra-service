@@ -25,6 +25,8 @@ async fn start_server() -> std::net::SocketAddr {
         );
         // Large interval so the anchor loop never fires during tests.
         std::env::set_var("ANCHOR_INTERVAL_SECS", "99999");
+        std::env::set_var("GATEWAY_SHARED_SECRET", "test-gateway-secret");
+        std::env::set_var("ADMIN_TOKEN", "test-admin-token");
     }
 
     let app = sigra_service::app().await.expect("build app");

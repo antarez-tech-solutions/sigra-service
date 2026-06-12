@@ -1,5 +1,6 @@
 //! sigra-service — Core backend for the Sigra e-signature platform.
 
+pub mod auth;
 pub mod config;
 pub mod db;
 pub mod error;

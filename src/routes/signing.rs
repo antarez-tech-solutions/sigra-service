@@ -1,15 +1,14 @@
 use axum::{
     extract::{Path, State},
-    http::HeaderMap,
     routing::post,
     Json, Router,
 };
 use serde::Deserialize;
 
+use crate::auth::AuthenticatedUser;
 use crate::error::ServiceError;
 use crate::models::*;
 use crate::repo::{EnvelopeRepo, SignerRepo};
-use crate::routes::documents::user_id;
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -27,11 +26,10 @@ struct SignReq {
 /// POST /api/envelopes/:id/send — transition Draft → Pending.
 async fn send_envelope(
     State(st): State<AppState>,
-    headers: HeaderMap,
+    AuthenticatedUser(owner): AuthenticatedUser,
     Path(id): Path<String>,
     Json(_body): Json<SendReq>,
 ) -> Result<Json<serde_json::Value>, ServiceError> {
-    let owner = user_id(&headers)?;
     let env = EnvelopeRepo::find_by_id(&st.db, &id).await?;
     if env.owner_id != owner {
         return Err(ServiceError::Forbidden("not your envelope".into()));

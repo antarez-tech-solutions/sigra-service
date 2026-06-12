@@ -1,6 +1,5 @@
 use axum::{
     extract::{Path, State},
-    http::HeaderMap,
     routing::{get, post},
     Json, Router,
 };
@@ -8,10 +7,10 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::auth::AuthenticatedUser;
 use crate::error::ServiceError;
 use crate::models::*;
 use crate::repo::{DocumentRepo, EnvelopeRepo, SignerRepo};
-use crate::routes::documents::user_id;
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -57,10 +56,9 @@ struct SignerRes {
 /// POST /api/envelopes
 async fn create_envelope(
     State(st): State<AppState>,
-    headers: HeaderMap,
+    AuthenticatedUser(owner): AuthenticatedUser,
     Json(body): Json<CreateReq>,
 ) -> Result<Json<EnvelopeRes>, ServiceError> {
-    let owner = user_id(&headers)?;
     let doc = DocumentRepo::find_by_id(&st.db, &body.document_id).await?;
     if doc.owner_id != owner {
         return Err(ServiceError::Forbidden("not your document".into()));
@@ -88,11 +86,10 @@ async fn create_envelope(
 /// POST /api/envelopes/:id/signers
 async fn add_signer(
     State(st): State<AppState>,
-    headers: HeaderMap,
+    AuthenticatedUser(owner): AuthenticatedUser,
     Path(id): Path<String>,
     Json(body): Json<AddSignerReq>,
 ) -> Result<Json<SignerRes>, ServiceError> {
-    let owner = user_id(&headers)?;
     let env = EnvelopeRepo::find_by_id(&st.db, &id).await?;
     if env.owner_id != owner {
         return Err(ServiceError::Forbidden("not your envelope".into()));
@@ -125,10 +122,9 @@ async fn add_signer(
 /// GET /api/envelopes/:id
 async fn get_envelope(
     State(st): State<AppState>,
-    headers: HeaderMap,
+    AuthenticatedUser(owner): AuthenticatedUser,
     Path(id): Path<String>,
 ) -> Result<Json<EnvelopeRes>, ServiceError> {
-    let owner = user_id(&headers)?;
     let env = EnvelopeRepo::find_by_id(&st.db, &id).await?;
     if env.owner_id != owner {
         return Err(ServiceError::Forbidden("not your envelope".into()));
