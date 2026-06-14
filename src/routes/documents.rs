@@ -1,6 +1,5 @@
 use axum::{
     extract::{Multipart, Path, State},
-    http::HeaderMap,
     routing::{get, post},
     Json, Router,
 };
@@ -8,19 +7,11 @@ use chrono::Utc;
 use serde::Serialize;
 use uuid::Uuid;
 
+use crate::auth::AuthenticatedUser;
 use crate::error::ServiceError;
 use crate::models::Document;
 use crate::repo::DocumentRepo;
 use crate::state::AppState;
-
-/// Extract authenticated user UUID from the gateway header.
-pub fn user_id(headers: &HeaderMap) -> Result<String, ServiceError> {
-    headers
-        .get("x-user-uuid")
-        .and_then(|v| v.to_str().ok())
-        .map(String::from)
-        .ok_or_else(|| ServiceError::Forbidden("missing X-User-UUID header".into()))
-}
 
 #[derive(Serialize)]
 struct DocumentRes {
@@ -54,10 +45,9 @@ struct DownloadRes {
 /// POST /api/documents — multipart upload.
 async fn upload(
     State(st): State<AppState>,
-    headers: HeaderMap,
+    AuthenticatedUser(owner): AuthenticatedUser,
     mut mp: Multipart,
 ) -> Result<Json<DocumentRes>, ServiceError> {
-    let owner = user_id(&headers)?;
     let field = mp
         .next_field()
         .await
@@ -95,10 +85,9 @@ async fn upload(
 /// GET /api/documents/:id
 async fn get_document(
     State(st): State<AppState>,
-    headers: HeaderMap,
+    AuthenticatedUser(owner): AuthenticatedUser,
     Path(id): Path<String>,
 ) -> Result<Json<DocumentRes>, ServiceError> {
-    let owner = user_id(&headers)?;
     let doc = DocumentRepo::find_by_id(&st.db, &id).await?;
     if doc.owner_id != owner {
         return Err(ServiceError::Forbidden("not your document".into()));
@@ -109,10 +98,9 @@ async fn get_document(
 /// GET /api/documents/:id/download — presigned S3 URL.
 async fn download(
     State(st): State<AppState>,
-    headers: HeaderMap,
+    AuthenticatedUser(owner): AuthenticatedUser,
     Path(id): Path<String>,
 ) -> Result<Json<DownloadRes>, ServiceError> {
-    let owner = user_id(&headers)?;
     let doc = DocumentRepo::find_by_id(&st.db, &id).await?;
     if doc.owner_id != owner {
         return Err(ServiceError::Forbidden("not your document".into()));
