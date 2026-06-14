@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod documents;
 pub mod envelopes;
 pub mod health;
@@ -10,6 +11,7 @@ use crate::state::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .merge(health::routes())
+        .merge(admin::routes())
         .merge(documents::routes())
         .merge(envelopes::routes())
         .merge(signing::routes())
