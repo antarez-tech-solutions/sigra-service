@@ -114,6 +114,7 @@ async fn add_signer(
         status: SignerStatus::Pending,
         signed_at: None,
         signature_data: None,
+        token_hash: None,
     };
     SignerRepo::insert(&st.db, &signer).await?;
     Ok(Json(signer_res(&signer)))

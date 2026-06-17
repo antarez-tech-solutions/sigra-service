@@ -114,4 +114,18 @@ impl SignerRepo {
             .await?;
         Ok(())
     }
+
+    pub async fn set_token_hash(
+        db: &Database,
+        id: &str,
+        hash: &str,
+    ) -> Result<(), ServiceError> {
+        db.collection::<Signer>("signers")
+            .update_one(
+                doc! { "_id": id },
+                doc! { "$set": { "token_hash": hash } },
+            )
+            .await?;
+        Ok(())
+    }
 }
