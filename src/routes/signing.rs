@@ -1,15 +1,17 @@
 use axum::{
     extract::{Path, State},
+    http::HeaderMap,
     routing::post,
     Json, Router,
 };
 use serde::Deserialize;
 
-use crate::auth::AuthenticatedUser;
+use crate::auth::{ct_eq, AuthenticatedUser};
 use crate::error::ServiceError;
 use crate::models::*;
 use crate::repo::{EnvelopeRepo, SignerRepo};
 use crate::state::AppState;
+use crate::tokens::{mint, verify, SignerClaims};
 
 #[derive(Deserialize)]
 struct SendReq {
@@ -44,19 +46,53 @@ async fn send_envelope(
     }
 
     EnvelopeRepo::update_status(&st.db, &id, &EnvelopeStatus::Pending).await?;
+
+    // Mint one single-use capability token per signer. We store only its
+    // SHA-256 hash (a DB leak yields hashes, not usable tokens) and return
+    // the plaintext tokens once. Out-of-band delivery (email) is a later
+    // concern; for now the owner forwards them.
+    let exp_unix = chrono::Utc::now().timestamp() + st.config.signer_token_ttl_secs as i64;
+    let mut signing_tokens = serde_json::Map::new();
+    for s in &signers {
+        let token = mint(
+            &st.config.signer_token_secret,
+            &SignerClaims {
+                envelope_id: id.clone(),
+                signer_id: s.id.clone(),
+                exp_unix,
+            },
+        );
+        SignerRepo::set_token_hash(&st.db, &s.id, &sigrachain_crypto::hash_string(&token)).await?;
+        signing_tokens.insert(s.id.clone(), serde_json::Value::String(token));
+    }
     tracing::info!(id = %id, signers = signers.len(), "envelope sent");
 
     Ok(Json(serde_json::json!({
-        "id": id, "status": "pending", "signers": signers.len()
+        "id": id, "status": "pending", "signers": signers.len(),
+        "signing_tokens": signing_tokens,
     })))
 }
 
 /// POST /api/envelopes/:id/sign — record one signer's signature.
 async fn sign_envelope(
     State(st): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<String>,
     Json(body): Json<SignReq>,
 ) -> Result<Json<serde_json::Value>, ServiceError> {
+    // Authenticate the signer BEFORE any DB read: a valid capability token
+    // is the credential (the signer is not a platform user, so no gateway
+    // identity applies here).
+    let token = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or_else(|| ServiceError::Unauthorized("missing signer token".into()))?;
+    let claims = verify(&st.config.signer_token_secret, token)?;
+    if claims.envelope_id != id || claims.signer_id != body.signer_id {
+        return Err(ServiceError::Forbidden("token does not match this signer".into()));
+    }
+
     let env = EnvelopeRepo::find_by_id(&st.db, &id).await?;
     if env.status != EnvelopeStatus::Pending {
         return Err(ServiceError::BadRequest("envelope not pending".into()));
@@ -68,6 +104,17 @@ async fn sign_envelope(
     }
     if signer.status != SignerStatus::Pending {
         return Err(ServiceError::BadRequest("signer already acted".into()));
+    }
+
+    // Bind the presented token to the one minted for this signer at send
+    // time (constant-time compare of SHA-256 hashes). Stops a token minted
+    // for a different signer/envelope that happens to share a secret.
+    let stored = signer
+        .token_hash
+        .as_deref()
+        .ok_or_else(|| ServiceError::Unauthorized("no active token for signer".into()))?;
+    if !ct_eq(stored, &sigrachain_crypto::hash_string(token)) {
+        return Err(ServiceError::Unauthorized("token has been superseded".into()));
     }
 
     let signers = SignerRepo::find_by_envelope(&st.db, &id).await?;
