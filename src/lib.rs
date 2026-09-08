@@ -16,8 +16,9 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 use std::sync::Arc;
 
+use axum::http::{header, HeaderValue, Method};
 use axum::Router;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 /// Build the application router (used by `main` and integration tests).
@@ -47,8 +48,38 @@ pub async fn app() -> Result<Router, Box<dyn std::error::Error>> {
         st.config.anchor_interval_secs,
     );
 
-    Ok(routes::router()
+    let mut router = routes::router()
         .with_state(st)
-        .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any)))
+        .layer(TraceLayer::new_for_http());
+
+    // Dev-only CORS. Unset (the default) = no CORS layer at all: the gateway
+    // is the single CORS authority in deployed environments.
+    if let Ok(origins) = std::env::var("CORS_ALLOWED_ORIGINS") {
+        let list: Vec<HeaderValue> = origins
+            .split(',')
+            .map(str::trim)
+            .filter(|o| !o.is_empty())
+            .map(|o| {
+                if !o.starts_with("http://") && !o.starts_with("https://") {
+                    return Err(format!("origin {o:?} must start with http:// or https://"));
+                }
+                if o.chars().any(|c| c.is_whitespace()) {
+                    return Err(format!("origin {o:?} must not contain whitespace"));
+                }
+                o.parse::<HeaderValue>()
+                    .map_err(|e| format!("origin {o:?} is not a valid header value: {e}"))
+            })
+            .collect::<Result<_, _>>()
+            .map_err(|e| format!("invalid CORS_ALLOWED_ORIGINS: {e}"))?;
+        if !list.is_empty() {
+            router = router.layer(
+                CorsLayer::new()
+                    .allow_origin(AllowOrigin::list(list))
+                    .allow_methods([Method::GET, Method::POST])
+                    .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]),
+            );
+        }
+    }
+
+    Ok(router)
 }
