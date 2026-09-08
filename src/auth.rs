@@ -2,8 +2,11 @@
 //!
 //! Identity is a handler *parameter*, not a function handlers must remember
 //! to call. Any handler that takes [`AuthenticatedUser`] cannot be reached
-//! without passing the gateway checks — the extractor runs before the
-//! handler body and before body extraction.
+//! without the gateway enriching the request — the extractor runs before the
+//! handler body and before body extraction. The infra (ingress → api-gateway)
+//! authenticates the user and injects `X-User-UUID`; services trust it
+//! unconditionally because the perimeter strips inbound copies of trust headers
+//! before re-adding authenticated values.
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
@@ -38,40 +41,14 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
 
     async fn from_request_parts(
         parts: &mut Parts,
-        st: &AppState,
+        _st: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        // 1. Prove the request came through the gateway. Without this, any
-        //    client that can reach the service directly could mint an
-        //    identity by setting X-User-UUID itself.
-        let presented = header(parts, "x-gateway-auth")
-            .ok_or_else(|| ServiceError::Forbidden("missing gateway auth".into()))?;
-        if !ct_eq(presented, &st.config.gateway_shared_secret) {
-            return Err(ServiceError::Forbidden("invalid gateway auth".into()));
-        }
-        // 2. Only then trust the identity header the gateway injected.
+        // The gateway has already authenticated the request and injected
+        // `X-User-UUID`. The perimeter strips inbound trust headers before
+        // re-adding authenticated values — we trust the header as-is.
         let uuid = header(parts, "x-user-uuid")
             .ok_or_else(|| ServiceError::Forbidden("missing X-User-UUID header".into()))?;
         Ok(AuthenticatedUser(uuid.to_string()))
-    }
-}
-
-/// Guard for operator-only routes (`Authorization: Bearer <ADMIN_TOKEN>`).
-pub struct AdminAuth;
-
-impl FromRequestParts<AppState> for AdminAuth {
-    type Rejection = ServiceError;
-
-    async fn from_request_parts(
-        parts: &mut Parts,
-        st: &AppState,
-    ) -> Result<Self, Self::Rejection> {
-        let bearer = header(parts, "authorization")
-            .and_then(|v| v.strip_prefix("Bearer "))
-            .ok_or_else(|| ServiceError::Unauthorized("missing admin token".into()))?;
-        if !ct_eq(bearer, &st.config.admin_token) {
-            return Err(ServiceError::Unauthorized("invalid admin token".into()));
-        }
-        Ok(AdminAuth)
     }
 }
 

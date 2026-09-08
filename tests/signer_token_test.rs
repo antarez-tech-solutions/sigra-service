@@ -40,8 +40,9 @@ async fn start_server() -> std::net::SocketAddr {
 }
 
 /// Seed a Draft envelope + one pending signer directly, returning their ids.
-/// Avoids the S3-dependent upload path. No document row is needed: neither
-/// send_envelope nor sign_envelope reads the document in this phase.
+/// Avoids the S3-dependent upload path. A minimal document row is seeded
+/// because sign_envelope reads the envelope's document to build the
+/// canonical signing payload.
 async fn seed(db: &mongodb::Database) -> (String, String) {
     let env_id = uuid::Uuid::new_v4().to_string();
     let signer_id = uuid::Uuid::new_v4().to_string();
@@ -49,6 +50,16 @@ async fn seed(db: &mongodb::Database) -> (String, String) {
     // The models serialize chrono DateTime<Utc> via serde -> RFC3339 STRING
     // (not a BSON date), so seed strings to match how the app writes rows.
     let now = chrono::Utc::now().to_rfc3339();
+
+    db.collection::<bson::Document>("documents")
+        .insert_one(bson::doc! {
+            "_id": &doc_id, "owner_id": "owner-1",
+            "filename": "doc.pdf", "content_type": "application/pdf",
+            "size_bytes": 1_i32, "hash": "ab".repeat(32), "s3_key": "documents/x",
+            "created_at": &now,
+        })
+        .await
+        .unwrap();
 
     db.collection::<bson::Document>("envelopes")
         .insert_one(bson::doc! {
@@ -99,7 +110,7 @@ async fn sign_requires_valid_capability_token() {
     // Sign without a token -> 401.
     let resp = http
         .post(format!("http://{addr}/api/envelopes/{env_id}/sign"))
-        .json(&serde_json::json!({ "signer_id": signer_id, "signature_data": "x" }))
+        .json(&serde_json::json!({ "signer_id": signer_id }))
         .send()
         .await
         .unwrap();
@@ -109,17 +120,19 @@ async fn sign_requires_valid_capability_token() {
     let resp = http
         .post(format!("http://{addr}/api/envelopes/{env_id}/sign"))
         .bearer_auth(&token)
-        .json(&serde_json::json!({ "signer_id": "someone-else", "signature_data": "x" }))
+        .json(&serde_json::json!({ "signer_id": "someone-else" }))
         .send()
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 
-    // Valid token -> 200, envelope completes (single signer).
+    // Valid token -> 200, envelope completes (single signer). The seeded
+    // signer is email-only (no wallet_address), so no signature field is
+    // required and the record is class "audit".
     let resp = http
         .post(format!("http://{addr}/api/envelopes/{env_id}/sign"))
         .bearer_auth(&token)
-        .json(&serde_json::json!({ "signer_id": signer_id, "signature_data": "sig-blob" }))
+        .json(&serde_json::json!({ "signer_id": signer_id }))
         .send()
         .await
         .unwrap();
@@ -132,7 +145,7 @@ async fn sign_requires_valid_capability_token() {
     let resp = http
         .post(format!("http://{addr}/api/envelopes/{env_id}/sign"))
         .bearer_auth(&token)
-        .json(&serde_json::json!({ "signer_id": signer_id, "signature_data": "again" }))
+        .json(&serde_json::json!({ "signer_id": signer_id }))
         .send()
         .await
         .unwrap();

@@ -9,7 +9,7 @@ use serde::Deserialize;
 use crate::auth::{ct_eq, AuthenticatedUser};
 use crate::error::ServiceError;
 use crate::models::*;
-use crate::repo::{EnvelopeRepo, SignerRepo};
+use crate::repo::{DocumentRepo, EnvelopeRepo, SignerRepo};
 use crate::state::AppState;
 use crate::tokens::{mint, verify, SignerClaims};
 
@@ -22,7 +22,8 @@ struct SendReq {
 #[derive(Deserialize)]
 struct SignReq {
     signer_id: String,
-    signature_data: String,
+    /// Required when the signer has a registered key (wallet_address set).
+    signature: Option<crate::binding::WalletSignature>,
 }
 
 /// POST /api/envelopes/:id/send — transition Draft → Pending.
@@ -122,7 +123,71 @@ async fn sign_envelope(
         check_turn(&signer, &signers)?;
     }
 
-    SignerRepo::update_signed(&st.db, &body.signer_id, &body.signature_data).await?;
+    let doc = DocumentRepo::find_by_id(&st.db, &env.document_id).await?;
+
+    let record = match (&signer.wallet_address, &body.signature) {
+        // Key-holding signer: full cryptographic verification.
+        (Some(registered_key), Some(ws)) => {
+            if ws.algorithm != "ed25519" {
+                return Err(ServiceError::BadRequest("unsupported algorithm".into()));
+            }
+            if !ws.public_key_hex.eq_ignore_ascii_case(registered_key) {
+                return Err(ServiceError::Forbidden(
+                    "public key does not match registered signer key".into(),
+                ));
+            }
+            let payload = crate::binding::canonical_payload(
+                &id, &doc.hash, &signer.id, &ws.signed_at,
+            );
+            let pk = hex::decode(&ws.public_key_hex)
+                .map_err(|_| ServiceError::BadRequest("invalid public key hex".into()))?;
+            let sig_bytes = hex::decode(&ws.signature_hex)
+                .map_err(|_| ServiceError::BadRequest("invalid signature hex".into()))?;
+            let sig = sigrachain_crypto::Signature::from_bytes(&sig_bytes)
+                .map_err(|e| ServiceError::BadRequest(e.to_string()))?;
+            let ok = sigrachain_crypto::verify_signature(&payload, &sig, &pk)
+                .map_err(|e| ServiceError::BadRequest(e.to_string()))?;
+            if !ok {
+                return Err(ServiceError::BadRequest(
+                    "signature does not verify against this document and signer".into(),
+                ));
+            }
+            crate::binding::SignatureRecord {
+                class: "cryptographic".into(),
+                algorithm: Some("ed25519".into()),
+                public_key_hex: Some(ws.public_key_hex.to_lowercase()),
+                signature_hex: Some(ws.signature_hex.to_lowercase()),
+                payload_hash: sigrachain_crypto::hash_document(&payload),
+                signed_at: ws.signed_at.clone(),
+            }
+        }
+        // Wallet signer who sent no signature: refuse.
+        (Some(_), None) => {
+            return Err(ServiceError::BadRequest(
+                "signature required for this signer".into(),
+            ))
+        }
+        // Email-only signer: capability-token evidence, honestly labeled.
+        (None, _) => {
+            let signed_at = chrono::Utc::now().to_rfc3339();
+            let payload = crate::binding::canonical_payload(
+                &id, &doc.hash, &signer.id, &signed_at,
+            );
+            crate::binding::SignatureRecord {
+                class: "audit".into(),
+                algorithm: None,
+                public_key_hex: None,
+                signature_hex: None,
+                payload_hash: sigrachain_crypto::hash_document(&payload),
+                signed_at,
+            }
+        }
+    };
+
+    let record_json =
+        serde_json::to_string(&record).map_err(|e| ServiceError::Internal(e.to_string()))?;
+
+    SignerRepo::update_signed(&st.db, &body.signer_id, &record_json).await?;
     tracing::info!(signer = %body.signer_id, envelope = %id, "signed");
 
     let all_signed = signers

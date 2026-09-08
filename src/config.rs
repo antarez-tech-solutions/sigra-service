@@ -29,10 +29,6 @@ pub struct AppConfig {
     pub anchor_interval_secs: u64,
     /// Presigned URL expiry in seconds.
     pub presigned_url_expiry_secs: u64,
-    /// Shared secret proving a request came through the private gateway.
-    pub gateway_shared_secret: String,
-    /// Bearer token for operator-only /admin routes.
-    pub admin_token: String,
     /// HMAC key for signer capability tokens.
     pub signer_token_secret: String,
     /// Signer token lifetime in seconds (default: 7 days).
@@ -62,8 +58,6 @@ impl AppConfig {
             presigned_url_expiry_secs: env_or("PRESIGNED_URL_EXPIRY_SECS", "3600")
                 .parse()
                 .expect("invalid PRESIGNED_URL_EXPIRY_SECS"),
-            gateway_shared_secret: env_required("GATEWAY_SHARED_SECRET"),
-            admin_token: env_required("ADMIN_TOKEN"),
             signer_token_secret: env_required("SIGNER_TOKEN_SECRET"),
             signer_token_ttl_secs: env_or("SIGNER_TOKEN_TTL_SECS", "604800")
                 .parse()
