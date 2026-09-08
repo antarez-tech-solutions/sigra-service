@@ -1,4 +1,4 @@
-//! Auth integration tests: the /admin/anchor guard and the gateway secret.
+//! Auth integration tests: gateway injects X-User-UUID, service trusts it.
 //! Requires MongoDB on localhost:27017 (override: SIGRA_TEST_MONGODB_URI).
 
 use reqwest::StatusCode;
@@ -25,8 +25,6 @@ async fn start_server() -> std::net::SocketAddr {
         );
         // Large interval so the anchor loop never fires during tests.
         std::env::set_var("ANCHOR_INTERVAL_SECS", "99999");
-        std::env::set_var("GATEWAY_SHARED_SECRET", "test-gateway-secret");
-        std::env::set_var("ADMIN_TOKEN", "test-admin-token");
         std::env::set_var("SIGNER_TOKEN_SECRET", "test-signer-token-secret");
     }
 
@@ -38,32 +36,22 @@ async fn start_server() -> std::net::SocketAddr {
 }
 
 #[tokio::test]
-async fn admin_anchor_requires_token() {
+async fn admin_anchor_requires_user_header() {
     let addr = start_server().await;
     let client = reqwest::Client::new();
 
-    // No token → 401.
+    // No X-User-UUID → 403 (forbidden by the AuthenticatedUser extractor).
     let resp = client
         .post(format!("http://{addr}/admin/anchor"))
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 
-    // Wrong token → 401.
+    // With X-User-UUID → 200 (empty anchor when no completed envelopes).
     let resp = client
         .post(format!("http://{addr}/admin/anchor"))
-        .bearer_auth("wrong-token")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
-
-    // Correct token → 200. With no completed envelopes, anchor_batch
-    // returns 0 without touching the chain (services/anchoring.rs).
-    let resp = client
-        .post(format!("http://{addr}/admin/anchor"))
-        .bearer_auth("test-admin-token")
+        .header("x-user-uuid", "11111111-1111-1111-1111-111111111111")
         .send()
         .await
         .unwrap();
@@ -73,37 +61,22 @@ async fn admin_anchor_requires_token() {
 }
 
 #[tokio::test]
-async fn user_routes_require_gateway_secret() {
+async fn user_routes_require_user_header() {
     let addr = start_server().await;
     let client = reqwest::Client::new();
 
-    // X-User-UUID alone is NOT an identity: without the gateway secret the
-    // header must be ignored (this is the anti-spoofing property).
+    // No X-User-UUID → 403.
     let resp = client
         .post(format!("http://{addr}/api/envelopes"))
-        .header("x-user-uuid", "11111111-1111-1111-1111-111111111111")
         .json(&serde_json::json!({ "document_id": "nope", "title": "t" }))
         .send()
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 
-    // Wrong gateway secret → still forbidden.
+    // With X-User-UUID → passes auth; 404 on nonexistent document proves it.
     let resp = client
         .post(format!("http://{addr}/api/envelopes"))
-        .header("x-gateway-auth", "not-the-secret")
-        .header("x-user-uuid", "11111111-1111-1111-1111-111111111111")
-        .json(&serde_json::json!({ "document_id": "nope", "title": "t" }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-
-    // Correct secret + identity → auth passes; this request then 404s on
-    // the nonexistent document, proving we got past the extractor.
-    let resp = client
-        .post(format!("http://{addr}/api/envelopes"))
-        .header("x-gateway-auth", "test-gateway-secret")
         .header("x-user-uuid", "11111111-1111-1111-1111-111111111111")
         .json(&serde_json::json!({ "document_id": "nope", "title": "t" }))
         .send()
