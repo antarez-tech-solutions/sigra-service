@@ -72,6 +72,14 @@ impl EnvelopeRepo {
             .await?;
         Ok(cur.try_collect().await?)
     }
+
+    pub async fn list_by_owner(db: &Database, owner: &str) -> Result<Vec<Envelope>, ServiceError> {
+        let cur = db
+            .collection::<Envelope>("envelopes")
+            .find(doc! { "owner_id": owner })
+            .await?;
+        Ok(cur.try_collect().await?)
+    }
 }
 
 pub struct SignerRepo;
