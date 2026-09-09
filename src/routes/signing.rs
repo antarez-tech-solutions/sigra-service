@@ -56,7 +56,7 @@ async fn send_envelope(
     let mut signing_tokens = serde_json::Map::new();
     for s in &signers {
         let token = mint(
-            &st.config.signer_token_secret,
+            st.config.signer_token_secret.expose(),
             &SignerClaims {
                 envelope_id: id.clone(),
                 signer_id: s.id.clone(),
@@ -89,7 +89,7 @@ async fn sign_envelope(
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
         .ok_or_else(|| ServiceError::Unauthorized("missing signer token".into()))?;
-    let claims = verify(&st.config.signer_token_secret, token)?;
+    let claims = verify(st.config.signer_token_secret.expose(), token)?;
     if claims.envelope_id != id || claims.signer_id != body.signer_id {
         return Err(ServiceError::Forbidden("token does not match this signer".into()));
     }

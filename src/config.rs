@@ -2,13 +2,36 @@
 
 use std::env;
 
+use zeroize::Zeroizing;
+
+/// A string that never appears in Debug output and is zeroized on drop.
+#[derive(Clone)]
+pub struct SecretString(Zeroizing<String>);
+
+impl SecretString {
+    pub fn new(value: String) -> Self {
+        Self(Zeroizing::new(value))
+    }
+    /// Deliberately loud name — every call site is a place key material
+    /// leaves the wrapper. Grep for it in review.
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for SecretString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("[REDACTED]")
+    }
+}
+
 /// Application configuration — all values from env vars.
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     /// Server listen port.
     pub port: u16,
     /// MongoDB connection URI.
-    pub mongodb_uri: String,
+    pub mongodb_uri: SecretString,
     /// MongoDB database name.
     pub mongodb_database: String,
     /// S3 bucket name.
@@ -20,7 +43,7 @@ pub struct AppConfig {
     /// EAS RPC URL for the target chain.
     pub eas_rpc_url: String,
     /// EAS attester private key (hex, no 0x prefix).
-    pub eas_private_key: String,
+    pub eas_private_key: SecretString,
     /// Target chain ID (default: 8453 = Base).
     pub eas_chain_id: u64,
     /// EAS schema UID to attest against (bytes32 hex, 0x-prefixed).
@@ -30,7 +53,7 @@ pub struct AppConfig {
     /// Presigned URL expiry in seconds.
     pub presigned_url_expiry_secs: u64,
     /// HMAC key for signer capability tokens.
-    pub signer_token_secret: String,
+    pub signer_token_secret: SecretString,
     /// Signer token lifetime in seconds (default: 7 days).
     pub signer_token_ttl_secs: u64,
 }
@@ -43,13 +66,13 @@ impl AppConfig {
     pub fn from_env() -> Self {
         Self {
             port: env_or("SERVER_PORT", "8080").parse().expect("invalid SERVER_PORT"),
-            mongodb_uri: env_required("MONGODB_URI"),
+            mongodb_uri: SecretString::new(env_required("MONGODB_URI")),
             mongodb_database: env_or("MONGODB_DATABASE", "sigra"),
             s3_bucket: env_required("S3_BUCKET"),
             s3_region: env_or("S3_REGION", "us-east-1"),
             s3_endpoint: env::var("S3_ENDPOINT").ok(),
             eas_rpc_url: env_required("EAS_RPC_URL"),
-            eas_private_key: env_required("EAS_PRIVATE_KEY"),
+            eas_private_key: SecretString::new(env_required("EAS_PRIVATE_KEY")),
             eas_chain_id: env_or("EAS_CHAIN_ID", "8453").parse().expect("invalid EAS_CHAIN_ID"),
             eas_schema_uid: env_required("EAS_SCHEMA_UID"),
             anchor_interval_secs: env_or("ANCHOR_INTERVAL_SECS", "3600")
@@ -58,7 +81,7 @@ impl AppConfig {
             presigned_url_expiry_secs: env_or("PRESIGNED_URL_EXPIRY_SECS", "3600")
                 .parse()
                 .expect("invalid PRESIGNED_URL_EXPIRY_SECS"),
-            signer_token_secret: env_required("SIGNER_TOKEN_SECRET"),
+            signer_token_secret: SecretString::new(env_required("SIGNER_TOKEN_SECRET")),
             signer_token_ttl_secs: env_or("SIGNER_TOKEN_TTL_SECS", "604800")
                 .parse()
                 .expect("invalid SIGNER_TOKEN_TTL_SECS"),
@@ -82,5 +105,13 @@ mod tests {
     fn env_or_returns_default() {
         let val = env_or("SIGRA_TEST_NONEXISTENT_VAR", "fallback");
         assert_eq!(val, "fallback");
+    }
+
+    #[test]
+    fn debug_output_redacts_secrets() {
+        let s = SecretString::new("super-secret-key-material".into());
+        let printed = format!("{s:?}");
+        assert_eq!(printed, "[REDACTED]");
+        assert!(!printed.contains("secret-key"));
     }
 }
