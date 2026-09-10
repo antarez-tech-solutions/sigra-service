@@ -37,7 +37,7 @@ pub async fn anchor_batch(db: &Database, config: &AppConfig) -> Result<usize, Se
     };
 
     let eas_config = EasConfig::for_chain(chain_cfg, &config.eas_rpc_url);
-    let client = EasClient::new(&eas_config, &config.eas_private_key)
+    let client = EasClient::new(&eas_config, config.eas_private_key.expose())
         .await
         .map_err(|e| ServiceError::Eas(e.to_string()))?;
 

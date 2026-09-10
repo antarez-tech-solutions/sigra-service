@@ -113,9 +113,18 @@ async fn download(
     }))
 }
 
+/// GET /api/documents — the caller's documents.
+async fn list_documents(
+    State(st): State<AppState>,
+    AuthenticatedUser(owner): AuthenticatedUser,
+) -> Result<Json<Vec<DocumentRes>>, ServiceError> {
+    let docs = DocumentRepo::list_by_owner(&st.db, &owner).await?;
+    Ok(Json(docs.into_iter().map(DocumentRes::from).collect()))
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/documents", post(upload))
+        .route("/api/documents", post(upload).get(list_documents))
         .route("/api/documents/{id}", get(get_document))
         .route("/api/documents/{id}/download", get(download))
 }

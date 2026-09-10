@@ -1,4 +1,4 @@
-//! Signer capability tokens gate the sign route (closes F1, signer-facing).
+//! Signer capability tokens gate the sign route (signer-facing auth).
 //! Requires MongoDB on localhost:27017 (override: SIGRA_TEST_MONGODB_URI).
 
 use reqwest::StatusCode;
@@ -27,8 +27,6 @@ async fn start_server() -> std::net::SocketAddr {
             "0x0000000000000000000000000000000000000000000000000000000000000000",
         );
         std::env::set_var("ANCHOR_INTERVAL_SECS", "99999");
-        std::env::set_var("GATEWAY_SHARED_SECRET", "test-gateway-secret");
-        std::env::set_var("ADMIN_TOKEN", "test-admin-token");
         std::env::set_var("SIGNER_TOKEN_SECRET", "test-signer-token-secret");
     }
 
@@ -96,7 +94,6 @@ async fn sign_requires_valid_capability_token() {
     // Send (owner route): transitions Draft -> Pending and returns tokens.
     let resp = http
         .post(format!("http://{addr}/api/envelopes/{env_id}/send"))
-        .header("x-gateway-auth", "test-gateway-secret")
         .header("x-user-uuid", "owner-1")
         .json(&serde_json::json!({}))
         .send()

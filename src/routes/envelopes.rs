@@ -160,9 +160,18 @@ fn signer_res(s: &Signer) -> SignerRes {
     }
 }
 
+/// GET /api/envelopes — the caller's envelopes (without signer detail).
+async fn list_envelopes(
+    State(st): State<AppState>,
+    AuthenticatedUser(owner): AuthenticatedUser,
+) -> Result<Json<Vec<EnvelopeRes>>, ServiceError> {
+    let envs = EnvelopeRepo::list_by_owner(&st.db, &owner).await?;
+    Ok(Json(envs.into_iter().map(|e| to_res(e, vec![])).collect()))
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/envelopes", post(create_envelope))
+        .route("/api/envelopes", post(create_envelope).get(list_envelopes))
         .route("/api/envelopes/{id}", get(get_envelope))
         .route("/api/envelopes/{id}/signers", post(add_signer))
 }

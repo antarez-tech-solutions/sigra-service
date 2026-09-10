@@ -7,7 +7,7 @@ use crate::config::AppConfig;
 
 /// Connect to MongoDB and return a `Database` handle.
 pub async fn connect(config: &AppConfig) -> Result<Database, mongodb::error::Error> {
-    let client = Client::with_uri_str(&config.mongodb_uri).await?;
+    let client = Client::with_uri_str(config.mongodb_uri.expose()).await?;
     client
         .database("admin")
         .run_command(doc! { "ping": 1 })
