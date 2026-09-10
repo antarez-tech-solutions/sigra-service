@@ -1,4 +1,4 @@
-//! List-endpoint integration tests (Phase 5, commit 30).
+//! Integration tests for the document and envelope list endpoints.
 //! GET /api/documents and GET /api/envelopes must return exactly the
 //! authenticated caller's rows and never another owner's.
 //! Requires MongoDB on localhost:27017 (override: SIGRA_TEST_MONGODB_URI).
@@ -28,10 +28,10 @@ async fn start_server() -> std::net::SocketAddr {
         // Large interval so the anchor loop never fires during tests.
         std::env::set_var("ANCHOR_INTERVAL_SECS", "99999");
         std::env::set_var("SIGNER_TOKEN_SECRET", "test-signer-token-secret");
-        // MinIO (the harvester test container) uses static root credentials;
+        // The local MinIO test instance uses static root credentials;
         // the AWS SDK credential chain reads these env vars.
-        std::env::set_var("AWS_ACCESS_KEY_ID", "harvester-test");
-        std::env::set_var("AWS_SECRET_ACCESS_KEY", "harvester-test-secret");
+        std::env::set_var("AWS_ACCESS_KEY_ID", "sigra-test");
+        std::env::set_var("AWS_SECRET_ACCESS_KEY", "sigra-test-secret");
         std::env::set_var("AWS_EC2_METADATA_DISABLED", "true");
     }
 

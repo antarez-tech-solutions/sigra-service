@@ -1,4 +1,4 @@
-//! Auth integration tests: gateway injects X-User-UUID, service trusts it.
+//! Auth integration tests: authenticated requests carry X-User-UUID.
 //! Requires MongoDB on localhost:27017 (override: SIGRA_TEST_MONGODB_URI).
 
 use reqwest::StatusCode;
